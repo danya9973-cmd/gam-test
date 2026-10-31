@@ -790,6 +790,89 @@ topic(
            "시점이 다르고 틀린 값도 섞여 있어, 31곳을 한 줄로 세우지 않고 "
            "같은 시점이 기록된 도시끼리만 비교했습니다.")
 
+# ── 13. 경기신용보증재단 ─────────────────────────────────────────
+# 원본은 재단 게시판의 xlsx 다. tools/xlsx_to_json.py 가 거르지 않고 옮긴 사본을 읽는다.
+# - 신용보증지원실적의 '금액'은 단위가 적혀 있지 않다 → 금액은 묻지 않고 업체 수만 쓴다
+# - 대위변제의 '합계' 줄은 소상공+일반과 1원씩 어긋나는 곳이 있다 → 합계 줄 대신 둘을 더한다
+# - 보증부실 파일은 '합계' 줄이 빠진 시·군이 있고 구분 이름도 해마다 다르다 → 쓰지 않는다
+GC = json.load(io.open(APP / "data" / "converted" / "gcgf.json", encoding="utf-8"))
+gc_firms = Counter()
+for r in GC["supply"]:
+    if r["연도"] != "5년합계":
+        gc_firms[int(r["연도"].rstrip("년"))] += r["업체수"]
+assert sorted(gc_firms) == [2020, 2021, 2022, 2023, 2024]
+peak_firm_y = max(gc_firms, key=gc_firms.get)
+
+gc_sub = Counter()                       # (연도, 시·군) → 원
+for r in GC["subrogation"]:
+    if r["구분"] != "합계":
+        gc_sub[r["연도"], r["시군명"]] += r["금액"]
+sub_total = {(r["연도"], r["시군명"]): r["금액"] for r in GC["subrogation"] if r["구분"] == "합계"}
+sub_gap = [abs(v - gc_sub[k]) for k, v in sub_total.items() if v != gc_sub[k]]
+sub_year = Counter()
+for (y, _), v in gc_sub.items():
+    sub_year[y] += v
+sub_ratio = sub_year[2024] / sub_year[2021]
+SUB4 = ["수원시", "고양시", "화성시", "성남시"]
+sub24 = {k: v for (y, k), v in gc_sub.items() if y == 2024}
+assert len(sub24) == 31, f"2024년 대위변제 시·군이 {len(sub24)}곳입니다"
+sub_top = max(sub24, key=sub24.get)
+
+wm = {r["대표자성별"]: r["보증건수기한연장"] for r in GC["women"] if r["기준년도"] == 2024}
+women_pct = wm["여"] / (wm["남"] + wm["여"]) * 100
+
+GM = GC["gmoney"]
+assert {r["진행현황"] for r in GM} == {"대출실행"}
+gm_bank = Counter(r["대출은행"] for r in GM)
+BANK4 = ["국민은행", "신한은행", "농협은행", "우리은행"]
+top_bank = gm_bank.most_common(1)[0][0]
+# 결정일자는 엑셀식 날짜(1899-12-30 부터 센 날 수)로 들어 있다
+gm_days = [dt.date(1899, 12, 30) + dt.timedelta(days=r["결정일자"]) for r in GM]
+
+topic(
+    "gcgf", "🏦", "경기신용보증재단",
+    "보증·대위변제·G-money, 숫자로 보는 재단",
+    "경기신용보증재단 공공데이터",
+    "https://www.gcgf.or.kr/gcgf/pt/pst/selectPstList.do?mi=1181&bbsId=1039",
+    [
+        choice("b1", "2020~2024년 가운데 경기신용보증재단의 보증을 받은 업체 수가 가장 많았던 해는?",
+               [f"{y}년" for y in (2020, 2021, 2022, 2024)], f"{peak_firm_y}년",
+               "신용보증지원실적에서 31개 시·군의 업체 수를 해마다 더하면 "
+               + " · ".join(f"{y}년 {n:,}곳" for y, n in sorted(gc_firms.items())) + "입니다",
+               "코로나가 터진 2020년이 가장 많았을 것 같지만, 보증이 몰린 때는 "
+               "그 뒤였습니다."),
+        slider("b2", "2021년과 비교해 2024년, 재단이 업체 대신 은행에 갚아 준 돈(대위변제)은 몇 배가 됐을까요?",
+               sub_ratio, "배", 0.5, 8, 0.1,
+               f"대위변제발생 내역에서 31개 시·군의 소상공·일반 금액을 더하면 2021년 "
+               f"{sub_year[2021] / 1e8:,.0f}억 원, 2024년 {sub_year[2024] / 1e8:,.0f}억 원입니다",
+               "보증은 빌릴 때가 아니라 몇 해 뒤 못 갚을 때 비용이 드러납니다. "
+               "코로나 때 받은 대출의 청구서가 늦게 도착했습니다."),
+        choice("b3", "2024년 대위변제 금액이 가장 많았던 시·군은?",
+               SUB4, sub_top,
+               "대위변제발생 내역의 2024년 소상공·일반 금액을 시·군마다 더하면 "
+               + " · ".join(f"{k} {sub24[k] / 1e8:,.0f}억 원" for k in SUB4) + "입니다",
+               "도청이 있는 수원이 가장 클 것 같지만, 업체가 가장 많이 늘어난 곳이 "
+               "갚지 못한 돈도 많습니다."),
+        slider("b4", "2024년 재단 보증(기한연장 포함) 가운데 대표자가 여성인 업체의 비율은?",
+               women_pct, "%", 0, 100, 1,
+               f"여성기업지원현황의 2024년 보증 건수(기한연장 포함)는 여성 대표 "
+               f"{wm['여']:,}건, 남성 대표 {wm['남']:,}건입니다",
+               "'사장님'을 떠올리면 남성을 먼저 떠올리기 쉽지만, 보증을 받는 업체의 "
+               "대표는 여성도 적지 않습니다."),
+        choice("b5", "2024년 G-money(경기도 중소기업육성자금) 대출을 가장 많이 내준 은행은?",
+               BANK4, top_bank,
+               f"G-money 지원현황의 2024년 대출 {len(GM):,}건을 은행별로 세면 "
+               + " · ".join(f"{k} {gm_bank[k]:,}건" for k in BANK4) + "입니다",
+               "시중은행 가운데 하나일 것 같지만, 동네마다 지점이 있는 은행이 "
+               "소상공인 대출을 가장 많이 맡았습니다."),
+    ],
+    caveat="재단 보도자료나 경영공시의 숫자와 다를 수 있는 것은, 보증 건수가 기한연장까지 "
+           "포함한 값이고, 대위변제는 원본의 '합계' 줄이 세부 금액과 "
+           f"{len(sub_gap)}곳에서 최대 {max(sub_gap)}원 어긋나 소상공·일반 금액을 직접 "
+           f"더했으며, G-money는 결정일이 {min(gm_days).year}년 {min(gm_days).month}월 "
+           f"{min(gm_days).day}일~{max(gm_days).month}월 {max(gm_days).day}일인 "
+           f"실행 건 {len(GM):,}건만 담긴 파일이기 때문입니다.")
+
 
 # ════════════════════════════════════════════════════════════════
 def main() -> None:

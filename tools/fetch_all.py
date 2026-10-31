@@ -147,6 +147,21 @@ SOURCES: list[tuple[str, str, str]] = [
     ("gg_wikidata.json",
      "경기도 31개 시·군 인구(시점별 1990~2024)·면적·좌표 (Wikidata)",
      "https://query.wikidata.org/sparql?format=json&query=" + urllib.parse.quote(GG_SPARQL)),
+
+    # 경기신용보증재단 홈페이지 정보공개 > 공공데이터 게시판의 첨부 xlsx (2025.10.31 게시).
+    # fileKey 는 재단이 글을 다시 올리면 바뀐다 — 받기가 실패하면 게시판에서 새 주소를 찾는다
+    # https://www.gcgf.or.kr/gcgf/pt/pst/selectPstList.do?mi=1181&bbsId=1039
+    *[(f"gcgf_{name}.xlsx", f"{desc} (경기신용보증재단)",
+       "https://www.gcgf.or.kr/common/pstFileDownload.do?fileKey=" + key)
+      for name, desc, key in (
+          ("supply", "시·군별 신용보증지원실적 2020~2024 — 금액 단위 표기 없음", "331f2c55ef69097ea2a930e1c5f216fb"),
+          ("subrogation", "시·군별 대위변제발생 2019~2024 (원)", "f2d93e90430e4ceefbd982ec0759e6e3"),
+          ("default", "시·군별 보증부실발생 2019~2024 (원)", "b18ea170fc75c689d5cada629d61860d"),
+          ("startup", "시·군별 창업기업 보증 2020~2024 (원)", "40f545eb1d5569e5fb0241a4cb8493c2"),
+          ("gmoney", "G-money 대출 건별 2024", "9612e3a777e746e6d24248a9dcb1c16b"),
+          ("bank_rate", "채권기관별 금리 2021~2024", "9a09d36f72cecce65a82d8a7bcebcdbe"),
+          ("women", "대표자 성별 보증·사고·대위변제 2018~2024", "4f745c81eefda56d8fa5519c5d6fc064"),
+      )],
 ]
 
 

@@ -52,6 +52,13 @@
   ],
   "topics": [
     {
+      "id": "gcgf",
+      "emoji": "🏦",
+      "title": "경기신용보증재단",
+      "blurb": "보증·대위변제·G-money, 숫자로 보는 재단",
+      "source": "경기신용보증재단 공공데이터"
+    },
+    {
       "id": "gyeonggi",
       "emoji": "🗺️",
       "title": "경기도 31개 시·군",
