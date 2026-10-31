@@ -17,6 +17,7 @@ import http.client
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -38,6 +39,24 @@ SEOUL = (37.5665, 126.9780)
 # 그 구성이 바뀌면 같은 주소로 받아도 지난 값이 달라진다 — 2026-10에 실제로 2024년 서울
 # 열대야가 15일에서 12일로 바뀌었다. 출처에 모델까지 적어야 다시 받아도 같은 값이 나온다.
 ERA5 = "&models=era5"
+
+# 경기도 31개 시·군의 위키데이터 ID. 시청·군청 좌표가 아니라 위키데이터 대표 좌표(P625)를 쓴다.
+# 인구(P1082)는 시·군마다 기록된 시점이 1~4개뿐이고 연천군은 없다 — 연도별 흐름은 못 만든다
+GG_WD = ("Q50203 Q42061 Q42064 Q42066 Q42069 Q42071 Q42075 Q42080 Q42084 Q42092 "
+         "Q42099 Q42108 Q20714 Q42113 Q42117 Q42119 Q42120 Q42124 Q50255 Q50257 "
+         "Q50258 Q42129 Q18459 Q42134 Q42135 Q42136 Q42153 Q42154 Q42155 Q42159 Q42160")
+# 시점(P585)은 연도까지만 적힌 것이 많다. 그래도 날짜는 1월 1일로 나오므로 정밀도(?prec)를 같이 받는다
+# — 9 = 연도, 10 = 월, 11 = 일
+GG_SPARQL = (
+    "SELECT ?item ?ko ?area ?coord ?pop ?date ?prec WHERE {"
+    " VALUES ?item { " + " ".join("wd:" + q for q in GG_WD.split()) + " }"
+    ' ?item rdfs:label ?ko FILTER(lang(?ko)="ko")'
+    " OPTIONAL { ?item wdt:P2046 ?area }"
+    " OPTIONAL { ?item wdt:P625 ?coord }"
+    " OPTIONAL { ?item p:P1082 ?st . ?st ps:P1082 ?pop ."
+    "   OPTIONAL { ?st pq:P585 ?date . ?st pqv:P585/wikibase:timePrecision ?prec }"
+    "   FILTER(!BOUND(?date) || (YEAR(?date) >= 1990 && YEAR(?date) <= 2024)) }"
+    "}")
 
 SOURCES: list[tuple[str, str, str]] = [
     # (저장 파일명, 설명, URL)
@@ -124,6 +143,10 @@ SOURCES: list[tuple[str, str, str]] = [
      "?format=geojson&starttime=2000-01-01&endtime=2024-12-31"
      "&minmagnitude=3.0&minlatitude=33&maxlatitude=39.5"
      "&minlongitude=124&maxlongitude=132&limit=20000"),
+
+    ("gg_wikidata.json",
+     "경기도 31개 시·군 인구(시점별 1990~2024)·면적·좌표 (Wikidata)",
+     "https://query.wikidata.org/sparql?format=json&query=" + urllib.parse.quote(GG_SPARQL)),
 ]
 
 

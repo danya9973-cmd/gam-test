@@ -1,11 +1,11 @@
 
 # 감 테스트 — 공개 데이터로 만든 추측 게임
 
-주제 11개, 주제당 5문항. **모든 숫자는 공개 데이터에서 직접 계산한 값**입니다.
+주제 12개, 주제당 5문항. **모든 숫자는 공개 데이터에서 직접 계산한 값**입니다.
 토요일 실습의 골격 저장소이고, 이대로 Vercel에 올리면 바로 돌아갑니다.
 
-**11개가 모두 채워져 있습니다.** 실습에서는 자기가 맡은 한 주제를 지우고
-`tools/build_topics.py` 안에서 다시 계산해 넣습니다. 이미 들어 있는 값은
+**주제는 지우지 않고 덧붙입니다.** 새 주제는 `tools/build_topics.py` 맨 아래(`main()` 위)에
+더하고, 화면에는 **가장 최근에 더한 주제가 맨 위**에 나옵니다. 이미 들어 있는 값은
 자기 계산과 대조할 때 씁니다.
 
 ## 돌려보기
@@ -33,7 +33,7 @@ python -m http.server 8000      # index.html 을 더블클릭하면 안 됩니�
 ```
    [내 노트북]                                   [인터넷]
 
-   tools/fetch_all.py      공개 데이터 6곳에서 받기 (키·로그인 없음)
+   tools/fetch_all.py      공개 데이터 7곳에서 받기 (키·로그인 없음)
         ↓  data/raw/  약 19MB   ← git 에도 배포에도 올라가지 않습니다
    tools/build_topics.py   원본에서 문항 계산
         ↓
@@ -56,20 +56,22 @@ python -m http.server 8000      # index.html 을 더블클릭하면 안 됩니�
 | `tools/fetch_all.py` | 공개 데이터 내려받기 (배포 제외) |
 | `tools/build_topics.py` | 원본 → 문항 계산 (배포 제외) |
 
-## 주제 10개
+## 주제 12개 (최근에 더한 순)
 
 | | 주제 | 출처 |
 |---|---|---|
-| 🌡️ | 서울은 얼마나 더워졌나 | Open-Meteo Archive (ERA5) |
-| ☔ | 비는 언제, 얼마나 | Open-Meteo Archive (ERA5) |
-| 😷 | 미세먼지, 언제 나쁜가 | Open-Meteo Air Quality (CAMS) |
-| ⏰ | 우리는 얼마나 일하나 | Our World in Data |
-| 👶 | 인구와 출산 | World Bank |
-| 🌐 | 인터넷과 연결 | World Bank |
-| 💵 | 원달러 환율 26년 | Frankfurter (ECB) |
-| 🏙️ | 서울·도쿄·런던·싱가포르 | Open-Meteo Archive (ERA5) |
-| 🌎 | 지진은 얼마나 자주 | USGS |
+| 🗺️ | 경기도 31개 시·군 | Wikidata |
+| ❄️ | 서울에 눈은 얼마나 | Open-Meteo Archive (ERA5) |
 | 🩺 | 얼마나 오래 사나 | Our World in Data |
+| 🌎 | 지진은 얼마나 자주 | USGS |
+| 🏙️ | 서울·도쿄·런던·싱가포르 | Open-Meteo Archive (ERA5) |
+| 💵 | 원달러 환율 26년 | Frankfurter (ECB) |
+| 🌐 | 인터넷과 연결 | World Bank |
+| 👶 | 인구와 출산 | World Bank |
+| ⏰ | 우리는 얼마나 일하나 | Our World in Data |
+| 😷 | 미세먼지, 언제 나쁜가 | Open-Meteo Air Quality (CAMS) |
+| ☔ | 비는 언제, 얼마나 | Open-Meteo Archive (ERA5) |
+| 🌡️ | 서울은 얼마나 더워졌나 | Open-Meteo Archive (ERA5) |
 
 ## Gemini 촌평 (선택)
 
@@ -102,6 +104,10 @@ Vercel → Settings → Environment Variables
 맞는 데이터가 아닙니다. 실제로 이 앱을 만들며 겪은 것들입니다.
 
 - **ERA5 재분석**의 서울 역대 최고기온은 38.7도(2018년)지만, **기상청 관측 기록은 39.6도**입니다. 날씨는 받는 주소에 `&models=era5` 를 붙여 모델을 고정했습니다 — 적지 않으면 Open-Meteo가 고르는 모델이 바뀌어 지난 값이 달라집니다
+- **위키데이터의 경기도 시·군 인구**는 시·군마다 기록된 시점이 1~4개뿐이고(연천군은 없음),
+  안양시 2024년 233,172명처럼 구 하나의 값이 섞인 것도 있습니다. 그래서 31곳을 한 줄로
+  세우지 않고, 같은 시점이 기록된 도시끼리만 비교했습니다. 처음 고른 경기데이터드림
+  (stat.gg.go.kr → data.gg.go.kr)은 인증키 없이는 견본 5건만 줍니다
 - World Bank의 '모든 나라' 목록에는 **유럽연합·고소득국 같은 집계치가 78개** 섞여 있습니다
 - 공휴일 API의 2025년 한국 목록에는 제헌절이 공휴일로 들어 있었습니다. **2025년 기준으로는
   틀린 값이지만, 2026년 5월 개정으로 제헌절은 다시 공휴일이 되었습니다** — 같은 값이

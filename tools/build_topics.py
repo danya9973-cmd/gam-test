@@ -707,6 +707,89 @@ topic(
     caveat="ERA5 재분석 모델이 계산한 강설량입니다. 기상청의 적설 관측이나, "
            "사람이 눈으로 보고 정하는 '첫눈' 기록과는 다릅니다.")
 
+# ── 12. 경기도 31개 시·군 ────────────────────────────────────────
+# 위키데이터 인구는 시·군마다 기록된 시점이 1~4개뿐이고, 안양 2024년(233,172명)처럼
+# 구 하나의 값이 섞인 것도 있다. 그래서 시·군끼리 인구를 견주지 않고,
+# 시점이 여러 개이고 값이 자연스러운 하남·부천 두 곳의 '변화'만 묻는다.
+#
+# 위키데이터는 연도만 아는 시점도 '2015-01-01'로 내보낸다. 정밀도(prec)를 보고
+# 연도면 '2015', 월이면 '2019-10' 으로 키를 잡는다 — '2015년 1월'이라고 쓰면 틀린다
+GG = {}
+for x in load_json("gg_wikidata.json")["results"]["bindings"]:
+    g = GG.setdefault(x["ko"]["value"], {"area": None, "pop": {}})
+    if "area" in x:
+        g["area"] = float(x["area"]["value"])
+    if "pop" in x and "date" in x:
+        key = x["date"]["value"][:7 if int(x["prec"]["value"]) >= 10 else 4]
+        assert key not in g["pop"], f"{x['ko']['value']} {key}: 같은 시점 인구가 둘입니다"
+        g["pop"][key] = float(x["pop"]["value"])
+assert len(GG) == 31, f"시·군이 {len(GG)}곳입니다"
+gg_area = {k: v["area"] for k, v in GG.items()}
+widest = max(gg_area, key=gg_area.get)
+narrowest = min(gg_area, key=gg_area.get)
+area_ratio = gg_area[widest] / gg_area[narrowest]
+hanam_15, hanam_23 = GG["하남시"]["pop"]["2015"], GG["하남시"]["pop"]["2023"]
+hanam_ratio = hanam_23 / hanam_15
+bc_08, bc_24 = GG["부천시"]["pop"]["2008"], GG["부천시"]["pop"]["2024"]
+bc_change = (bc_24 / bc_08 - 1) * 100
+# '31곳 중 가장 많이 줄어든 곳'은 셀 수 없다 — 같은 두 시점이 기록된 곳이 몇 안 된다.
+# 2015년과 2024년 인구가 모두 기록된 곳만 보기로 낸다
+DROP4 = sorted(k for k, v in GG.items() if "2015" in v["pop"] and "2024" in v["pop"])
+assert len(DROP4) == 4, f"2015·2024년이 모두 있는 곳이 {DROP4} 입니다"
+drop4 = {k: GG[k]["pop"]["2024"] - GG[k]["pop"]["2015"] for k in DROP4}
+most_drop = min(drop4, key=drop4.get)
+
+topic(
+    "gyeonggi", "🗺️", "경기도 31개 시·군",
+    "면적과 인구, 어디가 크고 어디가 줄었나",
+    "Wikidata", "https://www.wikidata.org/",
+    [
+        choice("g1", "경기도 31개 시·군 가운데 면적이 가장 넓은 곳은?",
+               ["포천시", "화성시", "가평군", "양평군"], widest,
+               f"위키데이터에 등재된 31개 시·군의 면적을 견주면 가장 넓은 곳은 "
+               f"{widest}이고, 보기 넷은 "
+               + " · ".join(f"{k} {gg_area[k]:,.1f}㎢"
+                            for k in ("포천시", "화성시", "가평군", "양평군"))
+               + "입니다",
+               "'시'가 '군'보다 클 것 같지만, 가장 넓은 곳은 군입니다."),
+        slider("g2", "경기도에서 가장 넓은 시·군은 가장 좁은 시·군의 몇 배일까요?",
+               area_ratio, "배", 1, 50, 1,
+               f"위키데이터에 등재된 31개 시·군의 면적 가운데 가장 넓은 {widest} "
+               f"{gg_area[widest]:,.1f}㎢를 가장 좁은 {narrowest} "
+               f"{gg_area[narrowest]:,.1f}㎢로 나눈 값입니다",
+               "같은 '시·군'이라는 이름으로 묶여 있어도 크기는 수십 배 차이 납니다."),
+        slider("g3", "2015년과 2023년 사이, 하남시 인구는 몇 배가 됐을까요?",
+               hanam_ratio, "배", 1, 4, 0.1,
+               f"위키데이터에 기록된 하남시 인구의 2023년 값 {hanam_23:,.0f}명을 "
+               f"2015년 값 {hanam_15:,.0f}명으로 나눈 값입니다(두 값 모두 몇 월 "
+               f"기준인지는 기록돼 있지 않습니다)",
+               "신도시 하나가 들어서면 도시 규모가 10년도 안 돼 바뀝니다."),
+        # 경계: +10% 초과 «10% 넘게 늘었다» · +3% 초과 «조금 늘었다» · ±3% «거의 같다» · -3% 미만 «줄었다»
+        choice("g4", "2008년과 2024년 사이, 부천시 인구는 어떻게 변했을까요?",
+               ["10% 넘게 늘었다", "조금 늘었다", "거의 같다", "줄었다"],
+               "10% 넘게 늘었다" if bc_change > 10 else "조금 늘었다" if bc_change > 3
+               else "거의 같다" if bc_change >= -3 else "줄었다",
+               f"위키데이터에 기록된 부천시 인구가 2008년 {bc_08:,.0f}명에서 2024년 "
+               f"{bc_24:,.0f}명으로 {bc_change:+.1f}% 변했고, ±3% 안이면 «거의 같다», "
+               f"3% 넘게 줄면 «줄었다»로 셉니다",
+               "경기도 인구가 늘었으니 모든 시가 늘었을 것 같지만, 서울에 붙은 "
+               "오래된 도시는 오히려 줄기도 합니다."),
+        choice("g5", "·".join(k[:-1] for k in DROP4) + " 가운데 2015년부터 2024년까지 "
+               "인구가 가장 많이 줄어든 곳은?",
+               DROP4, most_drop,
+               f"위키데이터에 2015년과 2024년 인구가 모두 기록된 {len(DROP4)}곳에서 "
+               f"2024년 값에서 2015년 값을 뺀 사람 수가 가장 작은 곳을 골랐고, "
+               + " · ".join(f"{k} {GG[k]['pop']['2015']:,.0f} → "
+                            f"{GG[k]['pop']['2024']:,.0f}명 ({drop4[k]:+,.0f})"
+                            for k in DROP4)
+               + "입니다",
+               "서울과 맞닿은 도시는 계속 붐빌 것 같지만, 재건축으로 집이 한꺼번에 "
+               "비면 인구가 크게 빠지기도 합니다."),
+    ],
+    caveat="면적과 인구는 위키데이터에 등재된 값입니다. 인구는 시·군마다 기록된 "
+           "시점이 다르고 틀린 값도 섞여 있어, 31곳을 한 줄로 세우지 않고 "
+           "같은 시점이 기록된 도시끼리만 비교했습니다.")
+
 
 # ════════════════════════════════════════════════════════════════
 def main() -> None:
@@ -721,6 +804,8 @@ def main() -> None:
             json.dumps(pack, ensure_ascii=False, indent=2))
         index.append({k: t[k] for k in ("id", "emoji", "title", "blurb",
                                         "source")})
+    # 주제는 이 파일 아래쪽에 덧붙여 간다. 화면에는 최근에 더한 주제가 맨 위에 오게 뒤집는다
+    index.reverse()
 
     # 제목·부제는 화면을 바꾸며 고친 값을 지킨다 (2장에서 내 제목으로 바꾼다).
     # 다시 계산해도 내 제목이 «감 테스트»로 돌아가지 않게, 있던 값을 읽어 쓴다
@@ -752,7 +837,8 @@ def main() -> None:
     }, ensure_ascii=False, indent=2))
 
     # 사람이 읽는 정답지
-    md = ["# 문항 정답지 — 10주제 50문항", "",
+    md = [f"# 문항 정답지 — {len(TOPICS)}주제 "
+          f"{sum(len(t['questions']) for t in TOPICS)}문항", "",
           "> 모든 값은 `data/raw/` 의 원본에서 `tools/build_topics.py` 가 계산합니다.", ""]
     for t in TOPICS:
         md += [f"## {t['emoji']} {t['title']}", "",
