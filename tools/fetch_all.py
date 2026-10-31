@@ -162,6 +162,16 @@ SOURCES: list[tuple[str, str, str]] = [
           ("bank_rate", "채권기관별 금리 2021~2024", "9a09d36f72cecce65a82d8a7bcebcdbe"),
           ("women", "대표자 성별 보증·사고·대위변제 2018~2024", "4f745c81eefda56d8fa5519c5d6fc064"),
       )],
+
+    # 같은 재단 홈페이지의 소개 페이지. 계산이 아니라 원문 확인용이다.
+    # 비전 내용은 본문 글자가 아니라 그림의 대체 글(alt)에만 들어 있다
+    *[(f"gcgf_page_{name}.html", f"재단 홈페이지 {desc} (경기신용보증재단)",
+       f"https://www.gcgf.or.kr/gcgf/cm/conts/contsView.do?{query}")
+      for name, desc, query in (
+          ("history", "설립근거 및 연혁", "mi=1006&contsId=1002"),
+          ("vision", "비전", "mi=1014&contsId=1006"),
+          ("ci", "CI소개", "mi=1018&contsId=1008"),
+      )],
 ]
 
 

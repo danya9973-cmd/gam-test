@@ -13,8 +13,10 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
+import re
 import sys
 import datetime as dt
 from collections import Counter
@@ -33,6 +35,8 @@ RAW = APP / "data" / "raw"
 OUT = APP / "topics"
 
 TOPICS: list[dict] = []
+# 주제당 5문항이 기본이다. 여기 적은 주제만 문항 수가 다르다
+N_QUESTIONS = {"gcgf": 10}
 
 
 def load_json(name):
@@ -829,10 +833,71 @@ top_bank = gm_bank.most_common(1)[0][0]
 # 결정일자는 엑셀식 날짜(1899-12-30 부터 센 날 수)로 들어 있다
 gm_days = [dt.date(1899, 12, 30) + dt.timedelta(days=r["결정일자"]) for r in GM]
 
+
+# 여기부터는 계산이 아니라 홈페이지 원문 확인이다. 정답도 원문에서 정규식으로 뽑는다 —
+# 원문이 바뀌어 찾지 못하면 손으로 채우지 말고 멈춘다
+def page_text(name):
+    """HTML → 글자. 그림의 대체 글(alt)도 글자로 살린다 — 비전은 거기에만 있다."""
+    s = io.open(RAW / name, encoding="utf-8").read()
+    s = re.sub(r"(?s)<(script|style)[^>]*>.*?</\1>", " ", s)
+    s = re.sub(r'<img[^>]*\balt="([^"]*)"[^>]*>', r" \1 ", s)
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", s)).split())
+
+
+def find(pattern, text, what):
+    m = re.search(pattern, text)
+    assert m, f"원문에서 {what}을(를) 찾지 못했습니다 — 페이지가 바뀌었는지 확인하세요"
+    return m
+
+
+hist_txt = page_text("gcgf_page_history.html")
+hist_txt = hist_txt[find(r"연혁 선택된 페이지 .*?2020년대 ", hist_txt, "연혁 시작").end():
+                    hist_txt.index("정보제공부서")]
+# 연혁은 '1996 05월 … 04월 …' 처럼 연도 뒤에 그 해의 월별 사건이 이어진다
+EVENTS = []                              # (연도, 월, 사건)
+for block in re.split(r" (?=(?:19|20)\d\d \d\d월 )", hist_txt):
+    year = int(block[:4])
+    for m in re.finditer(r"(\d\d)월 (.*?)(?= \d\d월 |$)", block[5:]):
+        EVENTS.append((year, int(m.group(1)), m.group(2)))
+supply_tr = {}                           # 누적 보증공급 n조원 돌파 → (연, 월)
+for y, mo, e in EVENTS:
+    for m in re.finditer(r"보증공급 (\d+)조원 돌파", e):
+        supply_tr[int(m.group(1))] = (y, mo)
+start_y, start_m = next((y, mo) for y, mo, e in EVENTS if "보증업무 개시" in e)
+months = lambda a, b: (b[0] - a[0]) * 12 + (b[1] - a[1])
+first30 = months((start_y, start_m), supply_tr[30]) / 12
+next30 = months(supply_tr[30], supply_tr[60]) / 12
+YEARS4 = [6, 12, 18, 24]
+next30_opt = min(YEARS4, key=lambda n: abs(n - next30))
+
+# 1996년에 연 것은 '경기신용보증조합'이고, 재단 이름은 나중에 붙었다
+seed_y, _, seed_e = next(x for x in EVENTS if re.search(r"출연금 \d+억", x[2]))
+seed = int(re.search(r"출연금 (\d+)억", seed_e).group(1))
+seed_org = find(r"(\S+조합) 개소", seed_e, "설립 당시 이름").group(1)
+rename_y = next(y for y, _, e in EVENTS if "경기신용보증재단으로 변경" in e)
+fund_y, fund_m, fund_e = next(x for x in EVENTS if re.search(r"기본재산 \d+조원 돌파", x[2]))
+fund_jo = int(re.search(r"기본재산 (\d+)조원", fund_e).group(1))
+SEED4 = [20, 200, 2000, 20000]           # 억 원
+seed_opt = min(SEED4, key=lambda n: abs(n - seed))
+won = lambda n: f"약 {n // 10000}조 원" if n >= 10000 else f"약 {n:,}억 원"
+
+chairs = {int(n): name for n, name in re.findall(r"제\s?(\d+)대 (\S+) 이사장 취임", hist_txt)}
+assert sorted(chairs) == list(range(1, max(chairs) + 1)), f"빠진 대수가 있습니다: {sorted(chairs)}"
+n_terms, n_people = max(chairs), len(set(chairs.values()))
+CHAIR4 = [n_terms, (n_terms + n_people) // 2, n_people, n_people - 4]
+assert len(set(CHAIR4)) == 4 and min(CHAIR4) > 0
+
+ci_txt = page_text("gcgf_page_ci.html")
+ci_c = find(r"GC\s*\(\s*Gyeonggi\s*\+\s*(\w+)\s*\)", ci_txt, "심벌마크 GC 설명").group(1)
+vis_txt = page_text("gcgf_page_vision.html")
+mission = find(r"(지역경제 활성화와 (\S+) 안전판)", vis_txt, "미션")
+# 홈페이지는 이사장이 바뀌면 고쳐진다 — 언제 받은 원문인지 한계에 적는다
+page_day = dt.date.fromtimestamp((RAW / "gcgf_page_history.html").stat().st_mtime)
+
 topic(
     "gcgf", "🏦", "경기신용보증재단",
     "보증·대위변제·G-money, 숫자로 보는 재단",
-    "경기신용보증재단 공공데이터",
+    "경기신용보증재단 (공공데이터 게시판 · 홈페이지)",
     "https://www.gcgf.or.kr/gcgf/pt/pst/selectPstList.do?mi=1181&bbsId=1039",
     [
         choice("b1", "2020~2024년 가운데 경기신용보증재단의 보증을 받은 업체 수가 가장 많았던 해는?",
@@ -865,13 +930,52 @@ topic(
                + " · ".join(f"{k} {gm_bank[k]:,}건" for k in BANK4) + "입니다",
                "시중은행 가운데 하나일 것 같지만, 동네마다 지점이 있는 은행이 "
                "소상공인 대출을 가장 많이 맡았습니다."),
+        # 6~10번은 홈페이지 원문 확인 문항이다 (주제 하나에 10문항은 이 주제만)
+        choice("b6", f"재단이 보증을 시작해 누적 보증공급 30조 원을 넘기기까지 약 {first30:.0f}년이 "
+               "걸렸습니다. 그다음 30조 원(누적 60조 원)까지는 얼마나 걸렸을까요?",
+               [f"약 {n}년" for n in YEARS4], f"약 {next30_opt}년",
+               f"홈페이지 연혁에서 보증업무 개시 {start_y}년 {start_m}월, 30조 원 돌파 "
+               f"{supply_tr[30][0]}년 {supply_tr[30][1]}월, 60조 원 돌파 {supply_tr[60][0]}년 "
+               f"{supply_tr[60][1]}월이므로 처음 30조 원은 {first30:.1f}년, 다음 30조 원은 "
+               f"{next30:.1f}년입니다",
+               "같은 30조 원이라도 코로나 이후에는 보증이 한꺼번에 몰려 훨씬 빨리 "
+               "쌓였습니다."),
+        choice("b7", f"{seed_y}년 재단의 전신인 {seed_org}이 문을 열 때 마련한 출연금은 얼마였을까요?",
+               [won(n) for n in SEED4], won(seed_opt),
+               f"홈페이지 연혁에 {seed_y}년 {seed_org} 개소 때 출연금 {seed:,}억 원으로 적혀 있고"
+               f"({rename_y}년 재단으로 이름을 바꿈), "
+               f"{fund_y}년 {fund_m}월에는 기본재산 {fund_jo}조 원을 넘겼습니다",
+               "지금의 규모를 떠올리면 시작도 컸을 것 같지만, 처음 자본은 지금 "
+               "기본재산의 수십분의 일이었습니다."),
+        choice("b8", f"재단 이사장은 제{n_terms}대까지 왔습니다. 이사장을 지낸 사람은 몇 명일까요?",
+               [f"{n}명" for n in CHAIR4], f"{n_people}명",
+               f"홈페이지 연혁의 이사장 취임 기록 제1~{n_terms}대를 사람별로 세면 "
+               f"{n_people}명입니다 (" + " · ".join(
+                   f"{name} {len([k for k in chairs if chairs[k] == name])}번"
+                   for name in dict.fromkeys(chairs[k] for k in sorted(chairs))) + ")",
+               "'제몇 대'는 사람 수가 아니라 임기 수입니다. 연임하면 대수만 "
+               "올라갑니다."),
+        choice("b9", "재단 심벌마크의 'GC'에서 C는 무엇의 머리글자일까요?",
+               ["Capital", "Company", "Credit", "Center"], ci_c,
+               f"홈페이지 CI소개에 심벌마크는 영문 이니셜 GC(Gyeonggi + {ci_c})를 "
+               "조합한 형상이라고 적혀 있습니다",
+               "돈을 다루는 곳이니 '자본'이 먼저 떠오르지만, 재단이 파는 것은 돈이 "
+               "아니라 신용입니다."),
+        choice("b10", "재단이 내건 미션 '지역경제 활성화와 ○○ 안전판'의 빈칸에 들어갈 말은?",
+               ["중소기업", "서민경제", "금융시장", "일자리"], mission.group(2),
+               f"홈페이지 비전 페이지(그림의 대체 글)에 미션이 '{mission.group(1)}'이라고 "
+               "적혀 있습니다",
+               "보증을 받는 곳이 중소기업이라 그쪽을 고르기 쉽지만, 재단은 스스로를 "
+               "서민 살림의 안전판이라고 소개합니다."),
     ],
     caveat="재단 보도자료나 경영공시의 숫자와 다를 수 있는 것은, 보증 건수가 기한연장까지 "
            "포함한 값이고, 대위변제는 원본의 '합계' 줄이 세부 금액과 "
            f"{len(sub_gap)}곳에서 최대 {max(sub_gap)}원 어긋나 소상공·일반 금액을 직접 "
            f"더했으며, G-money는 결정일이 {min(gm_days).year}년 {min(gm_days).month}월 "
            f"{min(gm_days).day}일~{max(gm_days).month}월 {max(gm_days).day}일인 "
-           f"실행 건 {len(GM):,}건만 담긴 파일이기 때문입니다.")
+           f"실행 건 {len(GM):,}건만 담긴 파일이기 때문입니다. 6~10번은 "
+           f"{page_day.year}년 {page_day.month}월 {page_day.day}일에 받은 홈페이지 원문 기준이라, "
+           "이사장 교체나 연혁 추가로 페이지가 고쳐지면 달라집니다.")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -879,7 +983,8 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     index = []
     for t in TOPICS:
-        assert len(t["questions"]) == 5, f"{t['id']}: 문항이 5개가 아닙니다"
+        n = N_QUESTIONS.get(t["id"], 5)
+        assert len(t["questions"]) == n, f"{t['id']}: 문항이 {n}개가 아닙니다"
         pack = {k: t[k] for k in ("id", "emoji", "title", "blurb",
                                   "source", "source_url", "caveat")}
         pack["questions"] = t["questions"]
